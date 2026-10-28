@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { AlertIcon, BookIcon, SearchIcon, TrashIcon } from '../components/Icons';
 import PronunciationButton from '../components/PronunciationButton';
+import { isEnglishOnly } from '../utils/preferences';
 
 const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:3000';
 
@@ -11,6 +12,9 @@ type SavedWord = {
   meaning: string;
   translation: string;
   sentence: string;
+  bookId?: string | null;
+  bookName?: string | null;
+  page?: number | null;
   createdAt: string;
 };
 
@@ -20,6 +24,7 @@ export default function Vocab() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [deleting, setDeleting] = useState<string | null>(null);
+  const englishOnly = isEnglishOnly();
 
   const load = useCallback(async (search: string) => {
     setLoading(true);
@@ -133,14 +138,27 @@ export default function Vocab() {
                 </button>
               </div>
 
-              <p dir="auto" className="mt-1 text-lg leading-relaxed text-stone-800">
-                {item.translation}
-              </p>
+              {!englishOnly && (
+                <p dir="auto" className="mt-1 text-lg leading-relaxed text-stone-800">
+                  {item.translation}
+                </p>
+              )}
               <p className="mt-2 text-sm leading-relaxed text-stone-600">{item.meaning}</p>
               {item.sentence && (
                 <p className="mt-3 border-l-2 border-amber-200 pl-3 text-xs italic leading-relaxed text-stone-400">
                   {item.sentence}
                 </p>
+              )}
+              {item.bookId && item.page && (
+                <Link
+                  to={`/reader/${item.bookId}?page=${item.page}`}
+                  className="mt-3 inline-flex w-fit items-center gap-1.5 rounded-full border border-stone-200 bg-stone-50 px-2.5 py-1 text-xs font-medium text-stone-500 transition hover:border-amber-300 hover:bg-amber-50 hover:text-amber-800"
+                >
+                  <BookIcon className="h-3.5 w-3.5" />
+                  <span className="max-w-[12rem] truncate">{item.bookName?.replace(/\.pdf$/i, '') ?? 'Source'}</span>
+                  <span className="text-stone-300">·</span>
+                  <span>Page {item.page}</span>
+                </Link>
               )}
             </article>
           ))}

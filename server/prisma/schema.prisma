@@ -24,6 +24,9 @@ model SavedWord {
   meaning      String
   translation  String
   sentence     String
+  bookId       String?
+  bookName     String?
+  page         Int?
   createdAt    DateTime @default(now())
   nextReviewAt DateTime @default(now())
   lastReviewedAt DateTime?
@@ -32,4 +35,5 @@ model SavedWord {
   easeFactor   Float    @default(2.5)
 
   @@index([nextReviewAt])
+  @@index([bookId])
 }

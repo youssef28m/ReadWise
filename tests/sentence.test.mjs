@@ -1,6 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { extractSentenceFromText, getWordAt, normalizePhrase } from '../client/src/utils/sentence.ts';
+import {
+  clozeSentence,
+  expandSelectionToWords,
+  extractSentenceFromText,
+  getWordAt,
+  normalizePhrase
+} from '../client/src/utils/sentence.ts';
 
 test('extracts a sentence around a word', () => {
   const text = 'I like cats. They are nice.';
@@ -33,4 +39,42 @@ test('extracts the clicked word and strips punctuation', () => {
 
 test('normalizes selected phrases', () => {
   assert.equal(normalizePhrase('  warm\n smile. '), 'warm smile');
+});
+
+test('snaps a dragged selection to whole words', () => {
+  const text = 'A warm smile greeted him.';
+  const start = text.indexOf('warm') + 2;
+  const end = text.indexOf('smile') + 2;
+  const bounds = expandSelectionToWords(text, start, end);
+  assert.equal(text.slice(bounds.start, bounds.end), 'warm smile');
+});
+
+test('leaves whole-word selections unchanged', () => {
+  const text = 'A warm smile greeted him.';
+  const start = text.indexOf('warm');
+  const end = text.indexOf('smile') + 'smile'.length;
+  assert.deepEqual(expandSelectionToWords(text, start, end), { start, end });
+});
+
+test('keeps apostrophes and hyphens inside snapped words', () => {
+  const text = "It's a well-known fact.";
+  const start = text.indexOf("It's") + 2;
+  const end = text.indexOf('well-known') + 5;
+  const bounds = expandSelectionToWords(text, start, end);
+  assert.equal(text.slice(bounds.start, bounds.end), "It's a well-known");
+});
+
+test('blanks the saved word inside its sentence', () => {
+  assert.equal(clozeSentence("It's a well-known fact.", 'well-known'), "It's a ____ fact.");
+  assert.equal(clozeSentence('He refused to give up.', 'give up'), 'He refused to ____.');
+  assert.equal(clozeSentence('She was Running fast.', 'running'), 'She was ____ fast.');
+});
+
+test('matches curly apostrophes when building a cloze', () => {
+  assert.equal(clozeSentence('I don’t mind at all.', "don't"), 'I ____ mind at all.');
+});
+
+test('returns null when the word is not in the sentence', () => {
+  assert.equal(clozeSentence('She was running fast.', 'jump'), null);
+  assert.equal(clozeSentence('', 'word'), null);
 });

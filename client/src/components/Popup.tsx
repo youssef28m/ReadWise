@@ -25,6 +25,10 @@ type PopupProps = {
   sentence: string;
   targetLang: string;
   apiBase: string;
+  bookId?: string;
+  bookName?: string;
+  page?: number;
+  showTranslation?: boolean;
   onClose: () => void;
 };
 
@@ -33,7 +37,19 @@ type Position = {
   top: number;
 };
 
-export default function Popup({ x, y, word, sentence, targetLang, apiBase, onClose }: PopupProps) {
+export default function Popup({
+  x,
+  y,
+  word,
+  sentence,
+  targetLang,
+  apiBase,
+  bookId,
+  bookName,
+  page,
+  showTranslation = true,
+  onClose
+}: PopupProps) {
   const cardRef = useRef<HTMLDivElement>(null);
   const controllerRef = useRef<AbortController | null>(null);
   const [position, setPosition] = useState<Position>({ left: x + 12, top: y + 16 });
@@ -133,7 +149,10 @@ export default function Popup({ x, y, word, sentence, targetLang, apiBase, onClo
           word,
           meaning: data.meaning,
           translation: data.translation,
-          sentence
+          sentence,
+          bookId,
+          bookName,
+          page
         })
       });
       if (!response.ok) throw new Error('Could not save this word.');
@@ -143,7 +162,7 @@ export default function Popup({ x, y, word, sentence, targetLang, apiBase, onClo
     } finally {
       setSaving(false);
     }
-  }, [apiBase, data, saved, saving, sentence, word]);
+  }, [apiBase, data, saved, saving, sentence, word, bookId, bookName, page]);
 
   const languageName = LANGUAGE_NAMES[targetLang] ?? targetLang.toUpperCase();
 
@@ -213,12 +232,14 @@ export default function Popup({ x, y, word, sentence, targetLang, apiBase, onClo
               <p className="mt-1 text-sm leading-relaxed text-stone-700">{data.meaning}</p>
             </section>
 
-            <section className="rounded-xl border border-stone-100 bg-stone-50/80 px-3.5 py-3">
-              <h3 className="text-[10px] font-semibold uppercase tracking-[0.14em] text-stone-400">{languageName}</h3>
-              <p dir="auto" className="mt-1 text-lg leading-relaxed text-stone-800">
-                {data.translation}
-              </p>
-            </section>
+            {showTranslation && data.translation && (
+              <section className="rounded-xl border border-stone-100 bg-stone-50/80 px-3.5 py-3">
+                <h3 className="text-[10px] font-semibold uppercase tracking-[0.14em] text-stone-400">{languageName}</h3>
+                <p dir="auto" className="mt-1 text-lg leading-relaxed text-stone-800">
+                  {data.translation}
+                </p>
+              </section>
+            )}
 
             {data.note && (
               <section className="flex gap-2.5 rounded-xl border border-amber-200/70 bg-amber-50 px-3.5 py-2.5">

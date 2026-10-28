@@ -9,7 +9,10 @@ const SaveSchema = z.object({
   word: z.string().min(1),
   meaning: z.string().min(1),
   translation: z.string().min(1),
-  sentence: z.string().min(1)
+  sentence: z.string().min(1),
+  bookId: z.string().min(1).max(200).optional(),
+  bookName: z.string().min(1).max(300).optional(),
+  page: z.number().int().min(1).optional()
 });
 
 const ReviewSchema = z.object({

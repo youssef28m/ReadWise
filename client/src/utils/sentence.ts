@@ -94,3 +94,30 @@ export function normalizePhrase(text: string): string {
     .trim()
     .replace(/^[^A-Za-z0-9]+|[^A-Za-z0-9]+$/g, '');
 }
+
+export function expandSelectionToWords(text: string, start: number, end: number): { start: number; end: number } {
+  let from = Math.min(Math.max(0, start), text.length);
+  let to = Math.min(Math.max(from, end), text.length);
+
+  while (from > 0 && WORD_CHAR.test(text[from - 1]) && WORD_CHAR.test(text[from])) from -= 1;
+  while (to < text.length && WORD_CHAR.test(text[to - 1]) && WORD_CHAR.test(text[to])) to += 1;
+
+  return { start: from, end: to };
+}
+
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+export function clozeSentence(sentence: string, word: string): string | null {
+  const phrase = word.trim();
+  if (!sentence || !phrase) return null;
+
+  const normalizedSentence = sentence.replace(/[’]/g, "'");
+  const normalizedPhrase = phrase.replace(/[’]/g, "'");
+  const pattern = new RegExp(`(?<![\\w'’-])${escapeRegExp(normalizedPhrase)}(?![\\w'’-])`, 'i');
+  const match = pattern.exec(normalizedSentence);
+  if (!match) return null;
+
+  return `${sentence.slice(0, match.index)}____${sentence.slice(match.index + match[0].length)}`;
+}

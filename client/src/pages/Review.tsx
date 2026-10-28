@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { AlertIcon, BookIcon, CheckIcon, SparkleIcon } from '../components/Icons';
 import PronunciationButton from '../components/PronunciationButton';
+import { clozeSentence } from '../utils/sentence';
+import { isEnglishOnly } from '../utils/preferences';
 
 const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:3000';
 
@@ -36,6 +38,24 @@ function nextInterval(card: SavedWord, rating: Exclude<Rating, 'learned'>): stri
   return `${days} ${days === 1 ? 'day' : 'days'}`;
 }
 
+function ClozeText({ sentence }: { sentence: string }) {
+  const parts = sentence.split('____');
+  return (
+    <>
+      {parts.map((part, index) => (
+        <span key={index}>
+          {part}
+          {index < parts.length - 1 && (
+            <span className="mx-1 inline-block h-5 w-20 translate-y-1 rounded-sm border-b-2 border-amber-400 bg-amber-50/70 align-baseline sm:w-24">
+              <span className="sr-only">blank</span>
+            </span>
+          )}
+        </span>
+      ))}
+    </>
+  );
+}
+
 export default function Review() {
   const [cards, setCards] = useState<SavedWord[]>([]);
   const [dueCount, setDueCount] = useState(0);
@@ -44,6 +64,7 @@ export default function Review() {
   const [revealed, setRevealed] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const englishOnly = isEnglishOnly();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -84,6 +105,7 @@ export default function Review() {
   }
 
   const card = cards[0];
+  const cloze = card ? clozeSentence(card.sentence, card.word) : null;
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -133,13 +155,41 @@ export default function Review() {
           <div className="overflow-hidden rounded-3xl border border-stone-200 bg-white shadow-[0_20px_55px_-35px_rgba(41,37,36,0.5)]">
             <div className="h-1.5 bg-gradient-to-r from-amber-400 via-orange-300 to-amber-400" />
             <div className="flex min-h-[25rem] flex-col justify-center px-7 py-10 text-center sm:px-14">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">Front</p>
-              <div className="mt-4 flex items-center justify-center gap-2"><h2 className="font-serif text-5xl capitalize text-stone-900 sm:text-6xl">{card.word}</h2><PronunciationButton word={card.word} className="h-9 w-9" /></div>
-              {!revealed ? <p className="mt-6 text-sm italic text-stone-400">Think of the meaning, then reveal the answer.</p> : <div className="mt-8 animate-pop border-t border-stone-100 pt-7 text-left">
-                <p dir="auto" className="text-center font-serif text-3xl text-stone-900">{card.translation}</p>
-                <p className="mt-5 text-center text-sm leading-relaxed text-stone-600">{card.meaning}</p>
-                <p className="mt-7 border-l-2 border-amber-200 pl-3 text-xs italic leading-relaxed text-stone-400">{card.sentence}</p>
-              </div>}
+              {!revealed ? (
+                <>
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">
+                    {cloze ? 'Complete the sentence' : 'Front'}
+                  </p>
+                  {cloze ? (
+                    <p className="mt-5 font-serif text-2xl leading-relaxed text-stone-800 sm:text-3xl">
+                      <ClozeText sentence={cloze} />
+                    </p>
+                  ) : (
+                    <div className="mt-4 flex items-center justify-center gap-2">
+                      <h2 className="font-serif text-5xl capitalize text-stone-900 sm:text-6xl">{card.word}</h2>
+                      <PronunciationButton word={card.word} className="h-9 w-9" />
+                    </div>
+                  )}
+                  <p className="mt-6 text-sm italic text-stone-400">
+                    {cloze ? 'Recall the missing word, then reveal the answer.' : 'Think of the meaning, then reveal the answer.'}
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">Answer</p>
+                  <div className="mt-4 flex items-center justify-center gap-2">
+                    <h2 className="font-serif text-5xl capitalize text-stone-900 sm:text-6xl">{card.word}</h2>
+                    <PronunciationButton word={card.word} className="h-9 w-9" />
+                  </div>
+                  <div className="mt-8 animate-pop border-t border-stone-100 pt-7 text-left">
+                    {!englishOnly && (
+                      <p dir="auto" className="text-center font-serif text-3xl text-stone-900">{card.translation}</p>
+                    )}
+                    <p className={`text-center text-sm leading-relaxed text-stone-600 ${englishOnly ? '' : 'mt-5'}`}>{card.meaning}</p>
+                    <p className="mt-7 border-l-2 border-amber-200 pl-3 text-xs italic leading-relaxed text-stone-400">{card.sentence}</p>
+                  </div>
+                </>
+              )}
             </div>
           </div>
 

@@ -1,23 +1,27 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 import { Document, Page, pdfjs } from 'react-pdf';
-import { useParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
 import Popup from '../components/Popup';
+import Select from '../components/Select';
 import {
   AlertIcon,
   BookIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
   FileIcon,
+  MoonIcon,
   SparkleIcon,
+  SunIcon,
   UploadIcon,
   ZoomInIcon,
   ZoomOutIcon
 } from '../components/Icons';
-import { extractSentenceFromText, getWordAt, normalizePhrase } from '../utils/sentence';
+import { expandSelectionToWords, extractSentenceFromText, getWordAt, normalizePhrase } from '../utils/sentence';
 import { addPdf, listPdfs, savePdf, type StoredPdf, updatePdfProgress } from '../utils/pdfLibrary';
+import { readLastLanguage, readTranslationMode, writeTranslationMode } from '../utils/preferences';
 
 pdfjs.GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url).toString();
 
@@ -25,6 +29,26 @@ const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:3000';
 const ZOOM_MIN = 0.6;
 const ZOOM_MAX = 1.8;
 const ZOOM_STEP = 0.1;
+const READER_THEME_KEY = 'tapword-reader-theme';
+
+type ReaderTheme = 'paper' | 'sepia' | 'night';
+
+const READER_THEMES: Array<{ value: ReaderTheme; label: string; icon: typeof BookIcon }> = [
+  { value: 'paper', label: 'Paper', icon: BookIcon },
+  { value: 'sepia', label: 'Sepia', icon: SunIcon },
+  { value: 'night', label: 'Night', icon: MoonIcon }
+];
+
+const LANGUAGE_OPTIONS = [
+  { value: 'ar', label: 'Arabic' },
+  { value: 'fr', label: 'French' },
+  { value: 'es', label: 'Spanish' },
+  { value: 'de', label: 'German' },
+  { value: 'tr', label: 'Turkish' },
+  { value: 'ur', label: 'Urdu' }
+];
+
+const TRANSLATION_OPTIONS = [{ value: 'off', label: 'English only', shortLabel: 'English' }, ...LANGUAGE_OPTIONS];
 
 type PopupState = {
   x: number;
@@ -73,21 +97,52 @@ function offsetWithinSpans(spans: HTMLElement[], node: Node, offset: number): nu
   return -1;
 }
 
+const WORD_CHAR = /[A-Za-z0-9'’-]/;
+
 function wordRange(node: Node, offset: number): Range | null {
   if (node.nodeType !== Node.TEXT_NODE) return null;
   const text = node.textContent ?? '';
   if (!text) return null;
   let index = Math.min(Math.max(0, offset), text.length - 1);
-  if (!/[A-Za-z0-9'’-]/.test(text[index]) && index > 0 && /[A-Za-z0-9'’-]/.test(text[index - 1])) index -= 1;
-  if (!/[A-Za-z0-9'’-]/.test(text[index])) return null;
+  if (!WORD_CHAR.test(text[index]) && index > 0 && WORD_CHAR.test(text[index - 1])) index -= 1;
+  if (!WORD_CHAR.test(text[index])) return null;
   let start = index;
   let end = index + 1;
-  while (start > 0 && /[A-Za-z0-9'’-]/.test(text[start - 1])) start -= 1;
-  while (end < text.length && /[A-Za-z0-9'’-]/.test(text[end])) end += 1;
+  while (start > 0 && WORD_CHAR.test(text[start - 1])) start -= 1;
+  while (end < text.length && WORD_CHAR.test(text[end])) end += 1;
   const range = document.createRange();
   range.setStart(node, start);
   range.setEnd(node, end);
   return range;
+}
+
+function rangeFromPageOffsets(spans: HTMLElement[], start: number, end: number): Range | null {
+  let consumed = 0;
+  let startNode: Text | null = null;
+  let startOffset = 0;
+
+  for (const span of spans) {
+    const textNode = span.firstChild;
+    const length = span.textContent?.length ?? 0;
+    if (!textNode || textNode.nodeType !== Node.TEXT_NODE) {
+      consumed += length + 1;
+      continue;
+    }
+    const node = textNode as Text;
+    if (!startNode && start <= consumed + length) {
+      startNode = node;
+      startOffset = Math.max(0, Math.min(node.length, start - consumed));
+    }
+    if (startNode && end <= consumed + length) {
+      const range = document.createRange();
+      range.setStart(startNode, startOffset);
+      range.setEnd(node, Math.max(0, Math.min(node.length, end - consumed)));
+      return range;
+    }
+    consumed += length + 1;
+  }
+
+  return null;
 }
 
 function rectsForRange(range: Range, container: HTMLElement | null) {
@@ -194,6 +249,8 @@ function EmptyState({ onFile, error }: { onFile: (file: File) => void; error: st
 
 export default function Reader() {
   const { bookId } = useParams();
+  const [searchParams] = useSearchParams();
+  const pageParam = searchParams.get('page');
   const [books, setBooks] = useState<StoredPdf[]>([]);
   const [book, setBook] = useState<StoredPdf | null>(null);
   const [numPages, setNumPages] = useState(0);
@@ -201,7 +258,11 @@ export default function Reader() {
   const [pageInput, setPageInput] = useState('1');
   const [pdfReady, setPdfReady] = useState(false);
   const [documentError, setDocumentError] = useState('');
-  const [targetLang, setTargetLang] = useState('ar');
+  const [translationMode, setTranslationMode] = useState(() => readTranslationMode());
+  const [theme, setTheme] = useState<ReaderTheme>(() => {
+    const stored = window.localStorage.getItem(READER_THEME_KEY);
+    return stored === 'sepia' || stored === 'night' ? stored : 'paper';
+  });
   const [popup, setPopup] = useState<PopupState | null>(null);
   const [zoom, setZoom] = useState(1);
   const [viewportWidth, setViewportWidth] = useState(() => window.innerWidth);
@@ -212,8 +273,18 @@ export default function Reader() {
   const pageRef = useRef<HTMLDivElement>(null);
 
   const bookKey = book?.id ?? null;
+  const night = theme === 'night';
+  const lastLanguage = readLastLanguage();
   const baseWidth = Math.min(880, Math.max(280, viewportWidth - 48));
   const pageWidth = Math.round(baseWidth * zoom);
+
+  useEffect(() => {
+    window.localStorage.setItem(READER_THEME_KEY, theme);
+    document.documentElement.dataset.readerTheme = theme;
+    return () => {
+      delete document.documentElement.dataset.readerTheme;
+    };
+  }, [theme]);
 
   useEffect(() => {
     function handleResize() {
@@ -231,7 +302,14 @@ export default function Reader() {
         setBooks(storedBooks);
         const selectedBook = storedBooks.find((item) => item.id === bookId) ?? storedBooks[0] ?? null;
         setBook(selectedBook);
-        if (selectedBook) setPage(selectedBook.lastPage);
+        if (selectedBook) {
+          const requestedPage = Number(pageParam);
+          const initialPage =
+            pageParam && Number.isFinite(requestedPage) && requestedPage >= 1
+              ? Math.floor(requestedPage)
+              : selectedBook.lastPage;
+          setPage(initialPage);
+        }
       })
       .catch(() => {
         if (!cancelled) setDocumentError('Your saved PDF library could not be opened.');
@@ -239,7 +317,7 @@ export default function Reader() {
     return () => {
       cancelled = true;
     };
-  }, [bookId]);
+  }, [bookId, pageParam]);
 
   useEffect(() => {
     if (!bookKey) return;
@@ -356,17 +434,16 @@ export default function Reader() {
       if (target.closest('a, button')) return;
 
       const selection = window.getSelection();
-      const selectionText =
-        selection && !selection.isCollapsed ? normalizePhrase(selection.toString()) : '';
+      const rawRange = selection && !selection.isCollapsed ? selection.getRangeAt(0).cloneRange() : null;
+      let selectionText = rawRange ? normalizePhrase(rawRange.toString()) : '';
       let node: Node | null = null;
       let offset = 0;
       let highlightRange: Range | null = null;
 
-      if (selectionText && selection) {
-        const range = selection.getRangeAt(0);
-        node = range.startContainer;
-        offset = range.startOffset;
-        highlightRange = range.cloneRange();
+      if (rawRange && selection) {
+        node = rawRange.startContainer;
+        offset = rawRange.startOffset;
+        highlightRange = rawRange;
         selection.removeAllRanges();
       } else {
         const caret = caretFromPoint(event.clientX, event.clientY);
@@ -385,13 +462,24 @@ export default function Reader() {
       const pageOffset = offsetWithinSpans(spans, node, offset);
       if (pageOffset < 0) return;
 
+      let rangeToHighlight = highlightRange ?? wordRange(node, offset);
+
+      if (rawRange) {
+        const endOffset = offsetWithinSpans(spans, rawRange.endContainer, rawRange.endOffset);
+        if (endOffset > pageOffset) {
+          const bounds = expandSelectionToWords(pageText, pageOffset, endOffset);
+          const phrase = normalizePhrase(pageText.slice(bounds.start, bounds.end));
+          if (phrase) selectionText = phrase;
+          rangeToHighlight = rangeFromPageOffsets(spans, bounds.start, bounds.end) ?? rangeToHighlight;
+        }
+      }
+
       const word =
         selectionText ||
         getWordAt(node.textContent ?? '', offset) ||
         getWordAt(pageText, pageOffset);
       if (!word) return;
 
-      const rangeToHighlight = highlightRange ?? wordRange(node, offset);
       if (rangeToHighlight) setHighlightRects(rectsForRange(rangeToHighlight, pageRef.current));
 
       const [previousText, nextText] = await Promise.all([loadPageText(page - 1), loadPageText(page + 1)]);
@@ -409,6 +497,11 @@ export default function Reader() {
       const next = Math.round((current + direction * ZOOM_STEP) * 10) / 10;
       return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, next));
     });
+  }
+
+  function changeTranslationMode(mode: string) {
+    writeTranslationMode(mode);
+    setTranslationMode(mode);
   }
 
   function scrollToPageStart() {
@@ -434,201 +527,274 @@ export default function Reader() {
   const progress = numPages > 0 ? Math.min(100, (page / numPages) * 100) : 0;
 
   return (
-    <main className="mx-auto w-full max-w-7xl px-4 pb-20 pt-6">
-      {!book ? (
-        <EmptyState onFile={openFile} error={documentError} />
-      ) : (
-        <>
-          <div className="sticky top-16 z-30 mx-auto max-w-5xl rounded-2xl border border-stone-200/80 bg-[#fbf8f2]/90 p-2.5 shadow-[0_10px_30px_-18px_rgba(41,37,36,0.35)] backdrop-blur">
-            <div className="flex flex-wrap items-center gap-2">
-              <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm font-medium text-stone-700 shadow-sm transition hover:border-stone-300 hover:bg-stone-50">
-                <FileIcon className="h-4 w-4 text-amber-600" />
-                <span className="max-w-[11rem] truncate">Add PDF</span>
-                <input
-                  type="file"
-                  accept="application/pdf,.pdf"
-                  className="sr-only"
-                  onChange={(event) => {
-                    const selected = event.target.files?.[0];
-                    if (selected) openFile(selected);
-                    event.target.value = '';
-                  }}
-                />
-              </label>
-
-              <label className="flex min-w-[10rem] items-center gap-2 rounded-xl border border-stone-200 bg-white px-2.5 py-1.5 text-xs text-stone-400 shadow-sm">
-                Library
-                <select
-                  value={book.id}
-                  onChange={(event) => chooseBook(event.target.value)}
-                  className="min-w-0 flex-1 rounded-md border-0 bg-transparent py-0.5 text-sm font-medium text-stone-800 outline-none"
-                  aria-label="Choose a saved PDF"
+    <div
+      data-reader-theme={theme}
+      className={`reader-shell min-h-[calc(100vh-4rem)] transition-colors ${
+        theme === 'sepia' ? 'bg-[#f0e4cc]' : theme === 'night' ? 'bg-[#191714]' : ''
+      }`}
+    >
+      <main className="mx-auto w-full max-w-7xl px-4 pb-20 pt-6">
+        {!book ? (
+          <EmptyState onFile={openFile} error={documentError} />
+        ) : (
+          <>
+            <div
+              className={`sticky top-16 z-30 mx-auto max-w-5xl rounded-2xl border p-2.5 backdrop-blur transition-colors ${
+                theme === 'sepia'
+                  ? 'border-[#ddcaa6] bg-[#f6ebd6]/95 shadow-[0_10px_30px_-18px_rgba(87,63,24,0.35)]'
+                  : theme === 'night'
+                    ? 'border-stone-700/80 bg-[#26231f]/95 shadow-[0_10px_30px_-18px_rgba(0,0,0,0.75)]'
+                    : 'border-stone-200/80 bg-[#fbf8f2]/90 shadow-[0_10px_30px_-18px_rgba(41,37,36,0.35)]'
+              }`}
+            >
+              <div className="flex flex-wrap items-center gap-2">
+                <label
+                  className={`inline-flex cursor-pointer items-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium shadow-sm transition ${
+                    night
+                      ? 'border-stone-700 bg-[#2b2824] text-stone-200 hover:border-stone-600 hover:bg-[#33302a]'
+                      : 'border-stone-200 bg-white text-stone-700 hover:border-stone-300 hover:bg-stone-50'
+                  }`}
                 >
-                  {books.map((item) => (
-                    <option key={item.id} value={item.id}>{item.name}</option>
-                  ))}
-                </select>
-              </label>
-
-              <span className="mx-1 hidden h-6 w-px bg-stone-200 sm:block" />
-
-              <div className="flex items-center gap-1">
-                <button
-                  type="button"
-                  onClick={() => changePage(-1)}
-                  disabled={!pdfReady || page <= 1}
-                  aria-label="Previous page"
-                  className="grid h-9 w-9 place-items-center rounded-lg text-stone-600 transition hover:bg-white hover:text-stone-900 disabled:opacity-30"
-                >
-                  <ChevronLeftIcon />
-                </button>
-                <div className="flex min-w-[6.5rem] items-center justify-center text-center text-sm tabular-nums text-stone-600">
+                  <FileIcon className="h-4 w-4 text-amber-600" />
+                  <span className="max-w-[11rem] truncate">Add PDF</span>
                   <input
-                    type="number"
-                    min="1"
-                    max={numPages || undefined}
-                    value={pdfReady ? pageInput : ''}
-                    disabled={!pdfReady}
-                    onChange={(event) => setPageInput(event.target.value)}
-                    onBlur={goToPage}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter') {
-                        event.preventDefault();
-                        goToPage();
-                        event.currentTarget.blur();
-                      }
+                    type="file"
+                    accept="application/pdf,.pdf"
+                    className="sr-only"
+                    onChange={(event) => {
+                      const selected = event.target.files?.[0];
+                      if (selected) openFile(selected);
+                      event.target.value = '';
                     }}
-                    aria-label="Go to page"
-                    className="w-10 rounded-md bg-transparent py-1 text-center font-semibold text-stone-900 outline-none transition focus:bg-amber-50 focus:ring-2 focus:ring-amber-200 disabled:opacity-60"
                   />
-                  <span className="mx-1 text-stone-300">/</span>
-                  {numPages || '…'}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => changePage(1)}
-                  disabled={!pdfReady || page >= numPages}
-                  aria-label="Next page"
-                  className="grid h-9 w-9 place-items-center rounded-lg text-stone-600 transition hover:bg-white hover:text-stone-900 disabled:opacity-30"
-                >
-                  <ChevronRightIcon />
-                </button>
-              </div>
-
-              <div className="ml-auto flex items-center gap-2">
-                <div className="flex items-center rounded-xl border border-stone-200 bg-white p-0.5 shadow-sm">
-                  <button
-                    type="button"
-                    onClick={() => changeZoom(-1)}
-                    disabled={zoom <= ZOOM_MIN}
-                    aria-label="Zoom out"
-                    className="grid h-8 w-8 place-items-center rounded-lg text-stone-500 transition hover:bg-stone-100 hover:text-stone-800 disabled:opacity-30"
-                  >
-                    <ZoomOutIcon />
-                  </button>
-                  <span className="w-11 text-center text-xs tabular-nums text-stone-500">
-                    {Math.round(zoom * 100)}%
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => changeZoom(1)}
-                    disabled={zoom >= ZOOM_MAX}
-                    aria-label="Zoom in"
-                    className="grid h-8 w-8 place-items-center rounded-lg text-stone-500 transition hover:bg-stone-100 hover:text-stone-800 disabled:opacity-30"
-                  >
-                    <ZoomInIcon />
-                  </button>
-                </div>
-
-                <label className="flex items-center gap-2 rounded-xl border border-stone-200 bg-white px-2.5 py-1.5 text-xs text-stone-400 shadow-sm">
-                  Translate to
-                  <select
-                    value={targetLang}
-                    onChange={(event) => setTargetLang(event.target.value)}
-                    className="rounded-md border-0 bg-transparent py-0.5 text-sm font-medium text-stone-800 outline-none"
-                  >
-                    <option value="ar">Arabic</option>
-                    <option value="fr">French</option>
-                    <option value="es">Spanish</option>
-                    <option value="de">German</option>
-                    <option value="tr">Turkish</option>
-                    <option value="ur">Urdu</option>
-                  </select>
                 </label>
+
+                <Select
+                  value={book.id}
+                  options={books.map((item) => ({ value: item.id, label: item.name }))}
+                  onChange={chooseBook}
+                  label="Library"
+                  ariaLabel="Choose a saved PDF"
+                  tone={night ? 'dark' : 'light'}
+                  className="min-w-[11rem] max-w-[16rem]"
+                />
+
+                <span className={`mx-1 hidden h-6 w-px sm:block ${night ? 'bg-stone-700' : 'bg-stone-200'}`} />
+
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => changePage(-1)}
+                    disabled={!pdfReady || page <= 1}
+                    aria-label="Previous page"
+                    className={`grid h-9 w-9 place-items-center rounded-lg transition disabled:opacity-30 ${
+                      night ? 'text-stone-400 hover:bg-[#33302a] hover:text-stone-100' : 'text-stone-600 hover:bg-white hover:text-stone-900'
+                    }`}
+                  >
+                    <ChevronLeftIcon />
+                  </button>
+                  <div
+                    className={`flex min-w-[6.5rem] items-center justify-center text-center text-sm tabular-nums ${
+                      night ? 'text-stone-300' : 'text-stone-600'
+                    }`}
+                  >
+                    <input
+                      type="number"
+                      min="1"
+                      max={numPages || undefined}
+                      value={pdfReady ? pageInput : ''}
+                      disabled={!pdfReady}
+                      onChange={(event) => setPageInput(event.target.value)}
+                      onBlur={goToPage}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') {
+                          event.preventDefault();
+                          goToPage();
+                          event.currentTarget.blur();
+                        }
+                      }}
+                      aria-label="Go to page"
+                      className={`w-10 rounded-md bg-transparent py-1 text-center font-semibold outline-none transition disabled:opacity-60 ${
+                        night
+                          ? 'text-stone-100 focus:bg-[#3a332a] focus:ring-2 focus:ring-amber-400/40'
+                          : 'text-stone-900 focus:bg-amber-50 focus:ring-2 focus:ring-amber-200'
+                      }`}
+                    />
+                    <span className={`mx-1 ${night ? 'text-stone-600' : 'text-stone-300'}`}>/</span>
+                    {numPages || '…'}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => changePage(1)}
+                    disabled={!pdfReady || page >= numPages}
+                    aria-label="Next page"
+                    className={`grid h-9 w-9 place-items-center rounded-lg transition disabled:opacity-30 ${
+                      night ? 'text-stone-400 hover:bg-[#33302a] hover:text-stone-100' : 'text-stone-600 hover:bg-white hover:text-stone-900'
+                    }`}
+                  >
+                    <ChevronRightIcon />
+                  </button>
+                </div>
+
+                <div className="ml-auto flex items-center gap-2">
+                  <div
+                    className={`flex items-center rounded-xl border p-0.5 shadow-sm ${
+                      night ? 'border-stone-700 bg-[#2b2824]' : 'border-stone-200 bg-white'
+                    }`}
+                  >
+                    {READER_THEMES.map(({ value, label, icon: Icon }) => {
+                      const active = theme === value;
+                      return (
+                        <button
+                          key={value}
+                          type="button"
+                          onClick={() => setTheme(value)}
+                          aria-label={`${label} theme`}
+                          aria-pressed={active}
+                          title={`${label} theme`}
+                          className={`grid h-8 w-8 place-items-center rounded-lg transition ${
+                            active
+                              ? night
+                                ? 'bg-amber-500 text-stone-950'
+                                : 'bg-stone-900 text-white'
+                              : night
+                                ? 'text-stone-400 hover:bg-[#33302a] hover:text-stone-100'
+                                : 'text-stone-400 hover:bg-stone-100 hover:text-stone-700'
+                          }`}
+                        >
+                          <Icon className="h-4 w-4" />
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <div
+                    className={`flex items-center rounded-xl border p-0.5 shadow-sm ${
+                      night ? 'border-stone-700 bg-[#2b2824]' : 'border-stone-200 bg-white'
+                    }`}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => changeZoom(-1)}
+                      disabled={zoom <= ZOOM_MIN}
+                      aria-label="Zoom out"
+                      className={`grid h-8 w-8 place-items-center rounded-lg transition disabled:opacity-30 ${
+                        night ? 'text-stone-400 hover:bg-[#33302a] hover:text-stone-100' : 'text-stone-500 hover:bg-stone-100 hover:text-stone-800'
+                      }`}
+                    >
+                      <ZoomOutIcon />
+                    </button>
+                    <span className={`w-11 text-center text-xs tabular-nums ${night ? 'text-stone-400' : 'text-stone-500'}`}>
+                      {Math.round(zoom * 100)}%
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => changeZoom(1)}
+                      disabled={zoom >= ZOOM_MAX}
+                      aria-label="Zoom in"
+                      className={`grid h-8 w-8 place-items-center rounded-lg transition disabled:opacity-30 ${
+                        night ? 'text-stone-400 hover:bg-[#33302a] hover:text-stone-100' : 'text-stone-500 hover:bg-stone-100 hover:text-stone-800'
+                      }`}
+                    >
+                      <ZoomInIcon />
+                    </button>
+                  </div>
+
+                  <Select
+                    value={translationMode}
+                    options={TRANSLATION_OPTIONS}
+                    onChange={changeTranslationMode}
+                    label="Translation"
+                    ariaLabel="Translation"
+                    align="right"
+                    tone={night ? 'dark' : 'light'}
+                    className="w-[11rem] shrink-0"
+                  />
+                </div>
+              </div>
+
+              <div className={`mx-1 mt-2 h-1 overflow-hidden rounded-full ${night ? 'bg-stone-700/70' : 'bg-stone-200/70'}`}>
+                <div
+                  className="h-full rounded-full bg-amber-500 transition-[width] duration-300"
+                  style={{ width: `${progress}%` }}
+                />
               </div>
             </div>
 
-            <div className="mx-1 mt-2 h-1 overflow-hidden rounded-full bg-stone-200/70">
-              <div
-                className="h-full rounded-full bg-amber-500 transition-[width] duration-300"
-                style={{ width: `${progress}%` }}
-              />
-            </div>
-          </div>
-
-          <p className="mt-3 flex items-center justify-center gap-1.5 text-center text-xs text-stone-400">
-            <SparkleIcon className="h-3.5 w-3.5 text-amber-500" />
-            Click a word for its meaning in context, or select a phrase to explain it.
-          </p>
-
-          {documentError && (
-            <p className="mx-auto mt-4 flex max-w-xl items-center justify-center gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-              <AlertIcon className="h-4 w-4" /> {documentError}
+            <p className={`mt-3 flex items-center justify-center gap-1.5 text-center text-xs ${night ? 'text-stone-500' : 'text-stone-400'}`}>
+              <SparkleIcon className="h-3.5 w-3.5 text-amber-500" />
+              Click a word for its meaning in context, or select a phrase to explain it.
             </p>
-          )}
 
-          <div className="mt-6 flex justify-center overflow-x-auto pb-6">
-            <div ref={pageRef} onClick={handlePageClick} className="pdf-page-shell shrink-0">
-              <Document
-                key={bookKey ?? 'document'}
-                file={book.blob}
-                onLoadSuccess={handleLoadSuccess}
-                onLoadError={(error) => {
-                  setPdfReady(false);
-                  setDocumentError(`This PDF could not be opened. ${error.message}`);
-                }}
-                loading={<PageSkeleton width={pageWidth} />}
-                error={
-                  <div className="rounded-2xl border border-red-200 bg-red-50 px-6 py-10 text-center text-sm text-red-700">
-                    This PDF could not be opened.
-                  </div>
-                }
+            {documentError && (
+              <p className="mx-auto mt-4 flex max-w-xl items-center justify-center gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                <AlertIcon className="h-4 w-4" /> {documentError}
+              </p>
+            )}
+
+            <div className="mt-6 flex justify-center overflow-x-auto pb-6">
+              <div
+                ref={pageRef}
+                onClick={handlePageClick}
+                className={`pdf-page-shell shrink-0 ${
+                  theme === 'sepia' ? 'reader-canvas-sepia' : theme === 'night' ? 'reader-canvas-night' : ''
+                }`}
               >
-                <Page
-                  pageNumber={page}
-                  width={pageWidth}
-                  renderTextLayer
-                  renderAnnotationLayer
-                  className="overflow-hidden rounded-sm bg-white shadow-[0_2px_4px_rgba(41,37,36,0.08),0_28px_60px_-24px_rgba(41,37,36,0.45)]"
-                />
-              </Document>
-              {highlightRects.map((rect, index) => (
-                <span
-                  key={`${page}-${index}`}
-                  className="word-highlight"
-                  style={{ left: rect.left, top: rect.top, width: rect.width, height: rect.height }}
-                  aria-hidden="true"
-                />
-              ))}
+                <Document
+                  key={bookKey ?? 'document'}
+                  file={book.blob}
+                  onLoadSuccess={handleLoadSuccess}
+                  onLoadError={(error) => {
+                    setPdfReady(false);
+                    setDocumentError(`This PDF could not be opened. ${error.message}`);
+                  }}
+                  loading={<PageSkeleton width={pageWidth} />}
+                  error={
+                    <div className="rounded-2xl border border-red-200 bg-red-50 px-6 py-10 text-center text-sm text-red-700">
+                      This PDF could not be opened.
+                    </div>
+                  }
+                >
+                  <Page
+                    pageNumber={page}
+                    width={pageWidth}
+                    renderTextLayer
+                    renderAnnotationLayer
+                    className="overflow-hidden rounded-sm bg-white shadow-[0_2px_4px_rgba(41,37,36,0.08),0_28px_60px_-24px_rgba(41,37,36,0.45)]"
+                  />
+                </Document>
+                {highlightRects.map((rect, index) => (
+                  <span
+                    key={`${page}-${index}`}
+                    className="word-highlight"
+                    style={{ left: rect.left, top: rect.top, width: rect.width, height: rect.height }}
+                    aria-hidden="true"
+                  />
+                ))}
+              </div>
             </div>
-          </div>
-        </>
-      )}
+          </>
+        )}
 
-      {popup && (
-        <Popup
-          x={popup.x}
-          y={popup.y}
-          word={popup.word}
-          sentence={popup.sentence}
-          targetLang={targetLang}
-          apiBase={API_BASE}
-          onClose={() => {
-            setPopup(null);
-            setHighlightRects([]);
-          }}
-        />
-      )}
-    </main>
+        {popup && (
+          <Popup
+            x={popup.x}
+            y={popup.y}
+            word={popup.word}
+            sentence={popup.sentence}
+            targetLang={lastLanguage}
+            apiBase={API_BASE}
+            bookId={book?.id}
+            bookName={book?.name}
+            page={page}
+            showTranslation={translationMode !== 'off'}
+            onClose={() => {
+              setPopup(null);
+              setHighlightRects([]);
+            }}
+          />
+        )}
+      </main>
+    </div>
   );
 }
