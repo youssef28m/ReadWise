@@ -1,0 +1,35 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Lookup {
+  id         String   @id @default(cuid())
+  word       String
+  sentenceHash String
+  targetLang String
+  result     Json
+  createdAt  DateTime @default(now())
+
+  @@unique([word, sentenceHash, targetLang])
+}
+
+model SavedWord {
+  id           String   @id @default(cuid())
+  word         String
+  meaning      String
+  translation  String
+  sentence     String
+  createdAt    DateTime @default(now())
+  nextReviewAt DateTime @default(now())
+  lastReviewedAt DateTime?
+  repetition   Int      @default(0)
+  intervalDays Int      @default(0)
+  easeFactor   Float    @default(2.5)
+
+  @@index([nextReviewAt])
+}

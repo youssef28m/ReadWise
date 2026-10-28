@@ -1,0 +1,13 @@
+node_modules
+**/node_modules
+dist
+**/dist
+.git
+.env
+*.log
+.DS_Store
+coverage
+tests
+README.md
+start.sh
+docker-compose.yml

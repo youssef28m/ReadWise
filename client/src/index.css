@@ -1,0 +1,63 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    @apply bg-[#f7f3ea] font-sans text-stone-800;
+    background-image:
+      radial-gradient(ellipse 80% 50% at 50% -10%, rgba(251, 191, 36, 0.12), transparent 60%),
+      radial-gradient(ellipse 60% 40% at 100% 100%, rgba(214, 211, 209, 0.35), transparent 70%);
+    background-attachment: fixed;
+  }
+
+  ::selection {
+    background-color: rgba(251, 191, 36, 0.35);
+  }
+}
+
+@layer components {
+  .skeleton {
+    @apply animate-pulse bg-stone-200/80;
+  }
+
+  .pdf-page-shell {
+    @apply relative select-text;
+    cursor: text;
+    scroll-margin-top: 5.5rem;
+  }
+
+  .react-pdf__Page__textContent span {
+    cursor: pointer;
+  }
+
+  .react-pdf__Page__textContent ::selection {
+    background-color: rgba(251, 191, 36, 0.45);
+  }
+
+  .word-highlight {
+    @apply pointer-events-none absolute rounded-sm bg-amber-300/55;
+    z-index: 1;
+    box-shadow: 0 0 0 1px rgba(217, 119, 6, 0.18);
+  }
+}
+
+@keyframes tapword-pop {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.animate-pop {
+  animation: tapword-pop 160ms ease-out;
+}

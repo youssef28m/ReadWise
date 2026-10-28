@@ -1,0 +1,47 @@
+name: readwise
+
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: readwise
+      POSTGRES_PASSWORD: readwise
+      POSTGRES_DB: readwise
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U readwise -d readwise"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://readwise:readwise@postgres:5432/readwise
+      PORT: 3000
+      CLIENT_ORIGIN: http://localhost:${APP_PORT:-18743}
+      GROQ_API_KEY: ${GROQ_API_KEY}
+      GROQ_MODEL: ${GROQ_MODEL:-openai/gpt-oss-20b}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  web:
+    build:
+      context: .
+      dockerfile: client/Dockerfile
+      args:
+        VITE_API_URL: /api
+    restart: unless-stopped
+    ports:
+      - "${APP_PORT:-18743}:80"
+      - "5173:80"
+    depends_on:
+      - api
+volumes:
+  pgdata:
