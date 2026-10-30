@@ -22,6 +22,7 @@ import {
 import { expandSelectionToWords, extractSentenceFromText, getWordAt, normalizePhrase } from '../utils/sentence';
 import { addPdf, listPdfs, savePdf, type StoredPdf, updatePdfProgress } from '../utils/pdfLibrary';
 import { readLastLanguage, readTranslationMode, writeTranslationMode } from '../utils/preferences';
+import { useTheme, type Theme } from '../theme';
 
 pdfjs.GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url).toString();
 
@@ -29,11 +30,8 @@ const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:3000';
 const ZOOM_MIN = 0.6;
 const ZOOM_MAX = 1.8;
 const ZOOM_STEP = 0.1;
-const READER_THEME_KEY = 'tapword-reader-theme';
 
-type ReaderTheme = 'paper' | 'sepia' | 'night';
-
-const READER_THEMES: Array<{ value: ReaderTheme; label: string; icon: typeof BookIcon }> = [
+const READER_THEMES: Array<{ value: Theme; label: string; icon: typeof BookIcon }> = [
   { value: 'paper', label: 'Paper', icon: BookIcon },
   { value: 'sepia', label: 'Sepia', icon: SunIcon },
   { value: 'night', label: 'Night', icon: MoonIcon }
@@ -153,10 +151,10 @@ function rectsForRange(range: Range, container: HTMLElement | null) {
     .map((rect) => ({ left: rect.left - containerRect.left, top: rect.top - containerRect.top, width: rect.width, height: rect.height }));
 }
 
-function PageSkeleton({ width }: { width: number }) {
+function PageSkeleton({ width, night = false }: { width: number; night?: boolean }) {
   return (
     <div
-      className="flex flex-col gap-3 rounded-sm bg-white p-10 shadow-xl"
+      className={`flex flex-col gap-3 rounded-sm p-10 shadow-xl ${night ? 'bg-[#26231f]' : 'bg-white'}`}
       style={{ width, minHeight: Math.round(width * 1.3) }}
       aria-hidden="true"
     >
@@ -174,7 +172,7 @@ function PageSkeleton({ width }: { width: number }) {
   );
 }
 
-function EmptyState({ onFile, error }: { onFile: (file: File) => void; error: string }) {
+function EmptyState({ onFile, error, night = false }: { onFile: (file: File) => void; error: string; night?: boolean }) {
   const [dragging, setDragging] = useState(false);
 
   return (
@@ -193,19 +191,35 @@ function EmptyState({ onFile, error }: { onFile: (file: File) => void; error: st
         }}
         className={`rounded-[2rem] border-2 border-dashed px-6 py-14 text-center transition sm:px-14 sm:py-20 ${
           dragging
-            ? 'border-amber-400 bg-amber-50/80 shadow-[0_0_0_6px_rgba(251,191,36,0.12)]'
-            : 'border-stone-300/80 bg-white/60'
+            ? night
+              ? 'border-amber-400 bg-amber-500/10 shadow-[0_0_0_6px_rgba(251,191,36,0.08)]'
+              : 'border-amber-400 bg-amber-50/80 shadow-[0_0_0_6px_rgba(251,191,36,0.12)]'
+            : night
+              ? 'border-stone-600/80 bg-[#26231f]/70'
+              : 'border-stone-300/80 bg-white/60'
         }`}
       >
-        <div className="mx-auto grid h-16 w-16 place-items-center rounded-2xl bg-amber-100 text-amber-700">
+        <div
+          className={`mx-auto grid h-16 w-16 place-items-center rounded-2xl ${
+            night ? 'bg-amber-500/15 text-amber-400' : 'bg-amber-100 text-amber-700'
+          }`}
+        >
           <BookIcon className="h-8 w-8" />
         </div>
-        <h1 className="mt-6 font-serif text-3xl text-stone-900 sm:text-4xl">Read closer.</h1>
-        <p className="mx-auto mt-3 max-w-md text-sm leading-relaxed text-stone-500">
+        <h1 className={`mt-6 font-serif text-3xl sm:text-4xl ${night ? 'text-stone-100' : 'text-stone-900'}`}>
+          Read closer.
+        </h1>
+        <p className={`mx-auto mt-3 max-w-md text-sm leading-relaxed ${night ? 'text-stone-400' : 'text-stone-500'}`}>
           Open an English PDF and tap any word. You&apos;ll get its meaning in the context of the sentence, plus a
           translation — without leaving the page.
         </p>
-        <label className="mt-7 inline-flex cursor-pointer items-center gap-2 rounded-xl bg-stone-900 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-stone-800 focus-within:ring-2 focus-within:ring-stone-900/30">
+        <label
+          className={`mt-7 inline-flex cursor-pointer items-center gap-2 rounded-xl px-5 py-3 text-sm font-semibold shadow-sm transition ${
+            night
+              ? 'bg-amber-500 text-stone-950 hover:bg-amber-400 focus-within:ring-2 focus-within:ring-amber-400/40'
+              : 'bg-stone-900 text-white hover:bg-stone-800 focus-within:ring-2 focus-within:ring-stone-900/30'
+          }`}
+        >
           <UploadIcon className="h-4 w-4" />
           Choose a PDF
           <input
@@ -219,11 +233,15 @@ function EmptyState({ onFile, error }: { onFile: (file: File) => void; error: st
             }}
           />
         </label>
-        <p className="mt-3 text-xs text-stone-400">or drag and drop it here</p>
+        <p className={`mt-3 text-xs ${night ? 'text-stone-500' : 'text-stone-400'}`}>or drag and drop it here</p>
       </div>
 
       {error && (
-        <p className="mt-4 flex items-center justify-center gap-2 text-sm text-red-600">
+        <p
+          className={`mt-4 flex items-center justify-center gap-2 text-sm ${
+            night ? 'text-red-400' : 'text-red-600'
+          }`}
+        >
           <AlertIcon className="h-4 w-4" /> {error}
         </p>
       )}
@@ -234,12 +252,23 @@ function EmptyState({ onFile, error }: { onFile: (file: File) => void; error: st
           { title: 'Select a phrase', body: 'Highlight two or more words to explain the whole expression.' },
           { title: 'Keep what matters', body: 'Save words with their sentence to your vocabulary list.' }
         ].map((item) => (
-          <div key={item.title} className="rounded-2xl border border-stone-200/70 bg-white/50 p-4">
-            <div className="flex items-center gap-2 text-sm font-semibold text-stone-800">
-              <SparkleIcon className="h-4 w-4 text-amber-600" />
+          <div
+            key={item.title}
+            className={`rounded-2xl border p-4 ${
+              night ? 'border-stone-700/70 bg-[#26231f]/70' : 'border-stone-200/70 bg-white/50'
+            }`}
+          >
+            <div
+              className={`flex items-center gap-2 text-sm font-semibold ${
+                night ? 'text-stone-100' : 'text-stone-800'
+              }`}
+            >
+              <SparkleIcon className={`h-4 w-4 ${night ? 'text-amber-400' : 'text-amber-600'}`} />
               {item.title}
             </div>
-            <p className="mt-1.5 text-xs leading-relaxed text-stone-500">{item.body}</p>
+            <p className={`mt-1.5 text-xs leading-relaxed ${night ? 'text-stone-400' : 'text-stone-500'}`}>
+              {item.body}
+            </p>
           </div>
         ))}
       </div>
@@ -259,10 +288,7 @@ export default function Reader() {
   const [pdfReady, setPdfReady] = useState(false);
   const [documentError, setDocumentError] = useState('');
   const [translationMode, setTranslationMode] = useState(() => readTranslationMode());
-  const [theme, setTheme] = useState<ReaderTheme>(() => {
-    const stored = window.localStorage.getItem(READER_THEME_KEY);
-    return stored === 'sepia' || stored === 'night' ? stored : 'paper';
-  });
+  const { theme, setTheme } = useTheme();
   const [popup, setPopup] = useState<PopupState | null>(null);
   const [zoom, setZoom] = useState(1);
   const [viewportWidth, setViewportWidth] = useState(() => window.innerWidth);
@@ -277,14 +303,6 @@ export default function Reader() {
   const lastLanguage = readLastLanguage();
   const baseWidth = Math.min(880, Math.max(280, viewportWidth - 48));
   const pageWidth = Math.round(baseWidth * zoom);
-
-  useEffect(() => {
-    window.localStorage.setItem(READER_THEME_KEY, theme);
-    document.documentElement.dataset.readerTheme = theme;
-    return () => {
-      delete document.documentElement.dataset.readerTheme;
-    };
-  }, [theme]);
 
   useEffect(() => {
     function handleResize() {
@@ -535,7 +553,7 @@ export default function Reader() {
     >
       <main className="mx-auto w-full max-w-7xl px-4 pb-20 pt-6">
         {!book ? (
-          <EmptyState onFile={openFile} error={documentError} />
+          <EmptyState onFile={openFile} error={documentError} night={night} />
         ) : (
           <>
             <div
@@ -614,7 +632,7 @@ export default function Reader() {
                         }
                       }}
                       aria-label="Go to page"
-                      className={`w-10 rounded-md bg-transparent py-1 text-center font-semibold outline-none transition disabled:opacity-60 ${
+                      className={`page-number-input w-10 rounded-md bg-transparent py-1 text-center font-semibold outline-none transition disabled:opacity-60 ${
                         night
                           ? 'text-stone-100 focus:bg-[#3a332a] focus:ring-2 focus:ring-amber-400/40'
                           : 'text-stone-900 focus:bg-amber-50 focus:ring-2 focus:ring-amber-200'
@@ -727,7 +745,11 @@ export default function Reader() {
             </p>
 
             {documentError && (
-              <p className="mx-auto mt-4 flex max-w-xl items-center justify-center gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+              <p
+                className={`mx-auto mt-4 flex max-w-xl items-center justify-center gap-2 rounded-xl border px-3 py-2 text-sm ${
+                  night ? 'border-red-500/30 bg-red-500/10 text-red-300' : 'border-red-200 bg-red-50 text-red-700'
+                }`}
+              >
                 <AlertIcon className="h-4 w-4" /> {documentError}
               </p>
             )}
@@ -748,9 +770,15 @@ export default function Reader() {
                     setPdfReady(false);
                     setDocumentError(`This PDF could not be opened. ${error.message}`);
                   }}
-                  loading={<PageSkeleton width={pageWidth} />}
+                  loading={<PageSkeleton width={pageWidth} night={night} />}
                   error={
-                    <div className="rounded-2xl border border-red-200 bg-red-50 px-6 py-10 text-center text-sm text-red-700">
+                    <div
+                      className={`rounded-2xl border px-6 py-10 text-center text-sm ${
+                        night
+                          ? 'border-red-500/30 bg-red-500/10 text-red-300'
+                          : 'border-red-200 bg-red-50 text-red-700'
+                      }`}
+                    >
                       This PDF could not be opened.
                     </div>
                   }
@@ -788,6 +816,7 @@ export default function Reader() {
             bookName={book?.name}
             page={page}
             showTranslation={translationMode !== 'off'}
+            night={night}
             onClose={() => {
               setPopup(null);
               setHighlightRects([]);

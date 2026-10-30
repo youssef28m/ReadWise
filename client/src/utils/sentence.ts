@@ -104,20 +104,3 @@ export function expandSelectionToWords(text: string, start: number, end: number)
 
   return { start: from, end: to };
 }
-
-function escapeRegExp(text: string): string {
-  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-export function clozeSentence(sentence: string, word: string): string | null {
-  const phrase = word.trim();
-  if (!sentence || !phrase) return null;
-
-  const normalizedSentence = sentence.replace(/[’]/g, "'");
-  const normalizedPhrase = phrase.replace(/[’]/g, "'");
-  const pattern = new RegExp(`(?<![\\w'’-])${escapeRegExp(normalizedPhrase)}(?![\\w'’-])`, 'i');
-  const match = pattern.exec(normalizedSentence);
-  if (!match) return null;
-
-  return `${sentence.slice(0, match.index)}____${sentence.slice(match.index + match[0].length)}`;
-}

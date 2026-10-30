@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { AlertIcon, BookIcon, SearchIcon, TrashIcon } from '../components/Icons';
 import PronunciationButton from '../components/PronunciationButton';
 import { isEnglishOnly } from '../utils/preferences';
+import { useTheme } from '../theme';
 
 const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:3000';
 
@@ -24,6 +25,8 @@ export default function Vocab() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [deleting, setDeleting] = useState<string | null>(null);
+  const { theme } = useTheme();
+  const night = theme === 'night';
   const englishOnly = isEnglishOnly();
 
   const load = useCallback(async (search: string) => {
@@ -65,41 +68,41 @@ export default function Vocab() {
     <main className="mx-auto w-full max-w-5xl px-4 pb-20 pt-10">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="font-serif text-3xl text-stone-900">Vocabulary</h1>
-          <p className="mt-1 text-sm text-stone-500">
+          <h1 className="font-serif text-3xl text-stone-900 dark:text-stone-100">Vocabulary</h1>
+          <p className="mt-1 text-sm text-stone-500 dark:text-stone-400">
             {loading ? 'Loading…' : `${items.length} ${items.length === 1 ? 'word' : 'words'} saved`}
           </p>
         </div>
 
         <div className="flex w-full gap-2 sm:w-auto">
-          <Link to="/review" className="shrink-0 rounded-xl bg-stone-900 px-3.5 py-2.5 text-sm font-semibold text-white transition hover:bg-stone-800">Review cards</Link>
+          <Link to="/review" className="shrink-0 rounded-xl bg-stone-900 px-3.5 py-2.5 text-sm font-semibold text-white transition hover:bg-stone-800 dark:bg-amber-500 dark:text-stone-950 dark:hover:bg-amber-400">Review cards</Link>
           <div className="relative min-w-0 flex-1 sm:w-72">
-          <SearchIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" />
+          <SearchIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400 dark:text-stone-500" />
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Search words or translations"
-            className="w-full rounded-xl border border-stone-200 bg-white py-2.5 pl-9 pr-3 text-sm text-stone-800 shadow-sm outline-none transition placeholder:text-stone-400 focus:border-amber-400 focus:ring-2 focus:ring-amber-200/60"
+            className="w-full rounded-xl border border-stone-200 bg-white py-2.5 pl-9 pr-3 text-sm text-stone-800 shadow-sm outline-none transition placeholder:text-stone-400 focus:border-amber-400 focus:ring-2 focus:ring-amber-200/60 dark:border-stone-700 dark:bg-[#2b2824] dark:text-stone-100 dark:placeholder:text-stone-500 dark:focus:border-amber-500/60 dark:focus:ring-amber-500/20"
           />
           </div>
         </div>
       </div>
 
       {error && (
-        <p className="mt-6 flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+        <p className="mt-6 flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
           <AlertIcon className="h-4 w-4" /> {error}
         </p>
       )}
 
       {!loading && items.length === 0 && (
-        <div className="mt-16 rounded-3xl border border-dashed border-stone-300/80 bg-white/60 px-6 py-16 text-center">
-          <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-amber-100 text-amber-700">
+        <div className="mt-16 rounded-3xl border border-dashed border-stone-300/80 bg-white/60 dark:border-stone-700 dark:bg-[#26231f]/70 px-6 py-16 text-center">
+          <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400">
             <BookIcon className="h-7 w-7" />
           </div>
-          <h2 className="mt-5 font-serif text-xl text-stone-900">
+          <h2 className="mt-5 font-serif text-xl text-stone-900 dark:text-stone-100">
             {query ? 'No matching words' : 'Your vocabulary is empty'}
           </h2>
-          <p className="mx-auto mt-2 max-w-sm text-sm leading-relaxed text-stone-500">
+          <p className="mx-auto mt-2 max-w-sm text-sm leading-relaxed text-stone-500 dark:text-stone-400">
             {query
               ? 'Try a different spelling, or search for the translation.'
               : 'Open a PDF and tap a word. Save it from the popup and it will show up here with its sentence.'}
@@ -107,7 +110,7 @@ export default function Vocab() {
           {!query && (
             <Link
               to="/"
-              className="mt-6 inline-flex items-center gap-2 rounded-xl bg-stone-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-stone-800"
+              className="mt-6 inline-flex items-center gap-2 rounded-xl bg-stone-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-stone-800 dark:bg-amber-500 dark:text-stone-950 dark:hover:bg-amber-400"
             >
               Open the reader
             </Link>
@@ -120,43 +123,43 @@ export default function Vocab() {
           {items.map((item) => (
             <article
               key={item.id}
-              className="group relative flex flex-col rounded-2xl border border-stone-200/80 bg-white p-5 shadow-[0_2px_10px_-8px_rgba(41,37,36,0.3)] transition hover:border-stone-300 hover:shadow-[0_14px_30px_-20px_rgba(41,37,36,0.4)]"
+              className="group relative flex flex-col rounded-2xl border border-stone-200/80 bg-white p-5 shadow-[0_2px_10px_-8px_rgba(41,37,36,0.3)] transition hover:border-stone-300 hover:shadow-[0_14px_30px_-20px_rgba(41,37,36,0.4)] dark:border-stone-700/80 dark:bg-[#26231f] dark:hover:border-stone-600"
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="flex min-w-0 items-center gap-1">
-                  <h2 className="truncate font-serif text-xl capitalize text-stone-900">{item.word}</h2>
-                  <PronunciationButton word={item.word} />
+                  <h2 className="truncate font-serif text-xl capitalize text-stone-900 dark:text-stone-100">{item.word}</h2>
+                  <PronunciationButton word={item.word} night={night} />
                 </div>
                 <button
                   type="button"
                   onClick={() => remove(item.id)}
                   disabled={deleting === item.id}
                   aria-label={`Delete ${item.word}`}
-                  className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-stone-300 transition hover:bg-red-50 hover:text-red-600 disabled:opacity-40"
+                  className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-stone-300 transition hover:bg-red-50 hover:text-red-600 dark:text-stone-500 dark:hover:bg-red-500/15 dark:hover:text-red-400 disabled:opacity-40"
                 >
                   <TrashIcon />
                 </button>
               </div>
 
               {!englishOnly && (
-                <p dir="auto" className="mt-1 text-lg leading-relaxed text-stone-800">
+                <p dir="auto" className="mt-1 text-lg leading-relaxed text-stone-800 dark:text-stone-200">
                   {item.translation}
                 </p>
               )}
-              <p className="mt-2 text-sm leading-relaxed text-stone-600">{item.meaning}</p>
+              <p className="mt-2 text-sm leading-relaxed text-stone-600 dark:text-stone-300">{item.meaning}</p>
               {item.sentence && (
-                <p className="mt-3 border-l-2 border-amber-200 pl-3 text-xs italic leading-relaxed text-stone-400">
+                <p className="mt-3 border-l-2 border-amber-200 pl-3 text-xs italic leading-relaxed text-stone-400 dark:border-amber-500/40 dark:text-stone-500">
                   {item.sentence}
                 </p>
               )}
               {item.bookId && item.page && (
                 <Link
                   to={`/reader/${item.bookId}?page=${item.page}`}
-                  className="mt-3 inline-flex w-fit items-center gap-1.5 rounded-full border border-stone-200 bg-stone-50 px-2.5 py-1 text-xs font-medium text-stone-500 transition hover:border-amber-300 hover:bg-amber-50 hover:text-amber-800"
+                  className="mt-3 inline-flex w-fit items-center gap-1.5 rounded-full border border-stone-200 bg-stone-50 px-2.5 py-1 text-xs font-medium text-stone-500 transition hover:border-amber-300 hover:bg-amber-50 hover:text-amber-800 dark:border-stone-700 dark:bg-stone-800/60 dark:text-stone-400 dark:hover:border-amber-500/40 dark:hover:bg-amber-500/10 dark:hover:text-amber-300"
                 >
                   <BookIcon className="h-3.5 w-3.5" />
                   <span className="max-w-[12rem] truncate">{item.bookName?.replace(/\.pdf$/i, '') ?? 'Source'}</span>
-                  <span className="text-stone-300">·</span>
+                  <span className="text-stone-300 dark:text-stone-600">·</span>
                   <span>Page {item.page}</span>
                 </Link>
               )}

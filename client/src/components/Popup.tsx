@@ -29,6 +29,7 @@ type PopupProps = {
   bookName?: string;
   page?: number;
   showTranslation?: boolean;
+  night?: boolean;
   onClose: () => void;
 };
 
@@ -48,6 +49,7 @@ export default function Popup({
   bookName,
   page,
   showTranslation = true,
+  night = false,
   onClose
 }: PopupProps) {
   const cardRef = useRef<HTMLDivElement>(null);
@@ -119,6 +121,19 @@ export default function Popup({
     return () => controller.abort();
   }, [word, sentence, targetLang, apiBase, attempt]);
 
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`${apiBase}/vocab/saved?word=${encodeURIComponent(word)}`)
+      .then((response) => (response.ok ? response.json() : null))
+      .then((payload: { saved?: boolean } | null) => {
+        if (!cancelled && payload?.saved) setSaved(true);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [word, apiBase]);
+
   useLayoutEffect(() => {
     const card = cardRef.current;
     if (!card) return;
@@ -171,22 +186,42 @@ export default function Popup({
       ref={cardRef}
       role="dialog"
       aria-label={`Definition of ${word}`}
-      className="animate-pop fixed z-50 w-[23rem] max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-2xl border border-stone-200/90 bg-white shadow-[0_24px_60px_-18px_rgba(41,37,36,0.45)]"
+      className={`animate-pop fixed z-50 w-[23rem] max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-2xl border ${
+        night
+          ? 'border-stone-700/80 bg-[#26231f] shadow-[0_24px_60px_-18px_rgba(0,0,0,0.8)]'
+          : 'border-stone-200/90 bg-white shadow-[0_24px_60px_-18px_rgba(41,37,36,0.45)]'
+      }`}
       style={{ left: position.left, top: position.top }}
     >
-      <div className="flex items-start justify-between gap-3 border-b border-stone-100 px-5 pt-4 pb-3">
+      <div
+        className={`flex items-start justify-between gap-3 border-b px-5 pt-4 pb-3 ${
+          night ? 'border-stone-700/70' : 'border-stone-100'
+        }`}
+      >
         <div className="min-w-0">
           <div className="flex items-center gap-1">
-            <h2 className="truncate font-serif text-xl capitalize leading-snug text-stone-900">{word}</h2>
-            <PronunciationButton word={word} />
+            <h2
+              className={`truncate font-serif text-xl capitalize leading-snug ${
+                night ? 'text-stone-100' : 'text-stone-900'
+              }`}
+            >
+              {word}
+            </h2>
+            <PronunciationButton word={word} night={night} />
           </div>
-          <p className="mt-1 line-clamp-2 text-xs italic leading-relaxed text-stone-400">{sentence}</p>
+          <p className={`mt-1 line-clamp-2 text-xs italic leading-relaxed ${night ? 'text-stone-500' : 'text-stone-400'}`}>
+            {sentence}
+          </p>
         </div>
         <button
           type="button"
           onClick={onClose}
           aria-label="Close"
-          className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-full text-stone-400 transition hover:bg-stone-100 hover:text-stone-700"
+          className={`mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-full transition ${
+            night
+              ? 'text-stone-500 hover:bg-[#33302a] hover:text-stone-200'
+              : 'text-stone-400 hover:bg-stone-100 hover:text-stone-700'
+          }`}
         >
           <XIcon />
         </button>
@@ -204,12 +239,20 @@ export default function Popup({
         )}
 
         {!loading && error && (
-          <div className="rounded-xl border border-amber-200 bg-amber-50 p-3.5">
-            <p className="text-sm leading-relaxed text-amber-900">{error}</p>
+          <div
+            className={`rounded-xl border p-3.5 ${
+              night ? 'border-amber-500/30 bg-amber-500/10' : 'border-amber-200 bg-amber-50'
+            }`}
+          >
+            <p className={`text-sm leading-relaxed ${night ? 'text-amber-200' : 'text-amber-900'}`}>{error}</p>
             <button
               type="button"
               onClick={() => setAttempt((value) => value + 1)}
-              className="mt-2.5 text-xs font-semibold text-amber-900 underline decoration-amber-400 underline-offset-2 hover:text-amber-950"
+              className={`mt-2.5 text-xs font-semibold underline underline-offset-2 ${
+                night
+                  ? 'text-amber-200 decoration-amber-500/60 hover:text-amber-100'
+                  : 'text-amber-900 decoration-amber-400 hover:text-amber-950'
+              }`}
             >
               Try again
             </button>
@@ -220,31 +263,59 @@ export default function Popup({
           <div className="space-y-4">
             <div className="flex flex-wrap items-center gap-2">
               {data.partOfSpeech && (
-                <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-[11px] font-medium uppercase tracking-wide text-amber-800">
+                <span
+                  className={`rounded-full px-2.5 py-0.5 text-[11px] font-medium uppercase tracking-wide ${
+                    night ? 'bg-amber-500/15 text-amber-300' : 'bg-amber-100 text-amber-800'
+                  }`}
+                >
                   {data.partOfSpeech}
                 </span>
               )}
-              <span className="text-[11px] uppercase tracking-wide text-stone-300">in context</span>
+              <span className={`text-[11px] uppercase tracking-wide ${night ? 'text-stone-500' : 'text-stone-300'}`}>
+                in context
+              </span>
             </div>
 
             <section>
-              <h3 className="text-[10px] font-semibold uppercase tracking-[0.14em] text-stone-400">Meaning</h3>
-              <p className="mt-1 text-sm leading-relaxed text-stone-700">{data.meaning}</p>
+              <h3
+                className={`text-[10px] font-semibold uppercase tracking-[0.14em] ${
+                  night ? 'text-stone-500' : 'text-stone-400'
+                }`}
+              >
+                Meaning
+              </h3>
+              <p className={`mt-1 text-sm leading-relaxed ${night ? 'text-stone-300' : 'text-stone-700'}`}>
+                {data.meaning}
+              </p>
             </section>
 
             {showTranslation && data.translation && (
-              <section className="rounded-xl border border-stone-100 bg-stone-50/80 px-3.5 py-3">
-                <h3 className="text-[10px] font-semibold uppercase tracking-[0.14em] text-stone-400">{languageName}</h3>
-                <p dir="auto" className="mt-1 text-lg leading-relaxed text-stone-800">
+              <section
+                className={`rounded-xl border px-3.5 py-3 ${
+                  night ? 'border-stone-700/70 bg-[#2b2824]' : 'border-stone-100 bg-stone-50/80'
+                }`}
+              >
+                <h3
+                  className={`text-[10px] font-semibold uppercase tracking-[0.14em] ${
+                    night ? 'text-stone-500' : 'text-stone-400'
+                  }`}
+                >
+                  {languageName}
+                </h3>
+                <p dir="auto" className={`mt-1 text-lg leading-relaxed ${night ? 'text-stone-100' : 'text-stone-800'}`}>
                   {data.translation}
                 </p>
               </section>
             )}
 
             {data.note && (
-              <section className="flex gap-2.5 rounded-xl border border-amber-200/70 bg-amber-50 px-3.5 py-2.5">
-                <SparkleIcon className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
-                <p className="text-xs leading-relaxed text-amber-900">{data.note}</p>
+              <section
+                className={`flex gap-2.5 rounded-xl border px-3.5 py-2.5 ${
+                  night ? 'border-amber-500/25 bg-amber-500/10' : 'border-amber-200/70 bg-amber-50'
+                }`}
+              >
+                <SparkleIcon className={`mt-0.5 h-4 w-4 shrink-0 ${night ? 'text-amber-400' : 'text-amber-600'}`} />
+                <p className={`text-xs leading-relaxed ${night ? 'text-amber-200' : 'text-amber-900'}`}>{data.note}</p>
               </section>
             )}
 
@@ -254,8 +325,12 @@ export default function Popup({
               disabled={saving || saved}
               className={`flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition ${
                 saved
-                  ? 'bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-200'
-                  : 'bg-stone-900 text-white hover:bg-stone-800 disabled:opacity-60'
+                  ? night
+                    ? 'bg-emerald-500/15 text-emerald-300 ring-1 ring-inset ring-emerald-500/30'
+                    : 'bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-200'
+                  : night
+                    ? 'bg-amber-500 text-stone-950 hover:bg-amber-400 disabled:opacity-60'
+                    : 'bg-stone-900 text-white hover:bg-stone-800 disabled:opacity-60'
               }`}
             >
               {saved ? (
@@ -268,7 +343,9 @@ export default function Popup({
                 'Save word'
               )}
             </button>
-            {saveError && <p className="text-center text-xs text-red-600">{saveError}</p>}
+            {saveError && (
+              <p className={`text-center text-xs ${night ? 'text-red-400' : 'text-red-600'}`}>{saveError}</p>
+            )}
           </div>
         )}
       </div>

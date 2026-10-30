@@ -37,3 +37,14 @@ model SavedWord {
   @@index([nextReviewAt])
   @@index([bookId])
 }
+
+model ReviewLog {
+  id         String   @id @default(cuid())
+  wordId     String
+  rating     String
+  previous   Json
+  createdAt  DateTime @default(now())
+
+  @@index([wordId])
+  @@index([createdAt])
+}
